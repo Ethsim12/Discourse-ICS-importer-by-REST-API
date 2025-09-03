@@ -198,6 +198,7 @@ def update_first_post_raw(
         fields.append(("bypass_bump", "true"))
     resp = put_form(s, f"/posts/{post_id}.json", fields)
     if bypass_bump and topic_id:
+        log.info("Invoking reset-bump-date fallback for topic %s", topic_id)
         try:
             _reset_bump_date(s, topic_id)
         except Exception:

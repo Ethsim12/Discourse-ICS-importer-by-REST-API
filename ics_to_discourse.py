@@ -95,19 +95,41 @@ def get_json(s: requests.Session, path: str, **params) -> Dict[str, Any]:
 
 def post_form(s: requests.Session, path: str, data: Iterable[Tuple[str, Any]]) -> Dict[str, Any]:
     r = _request_with_backoff(s, "POST", f"{BASE}{path}", data=data)
-    return r.json()
+    # Some endpoints might return empty; tolerate it.
+    if not r.content or not r.content.strip():
+        return {}
+    try:
+        return r.json()
+    except Exception:
+        return {"_raw": r.text}
+
 
 def put_form(s: requests.Session, path: str, data: Iterable[Tuple[str, Any]]) -> Dict[str, Any]:
     r = _request_with_backoff(s, "PUT", f"{BASE}{path}", data=data)
-    return r.json()
+    if not r.content or not r.content.strip():
+        return {}
+    try:
+        return r.json()
+    except Exception:
+        return {"_raw": r.text}
+
+def _reset_bump_date(s: requests.Session, topic_id: int) -> None:
+    """
+    Undo Latest bump caused by metadata/tag changes.
+    Requires staff credentials (your API user/key already are).
+    """
+    try:
+        # Empty form body; endpoint is PUT /t/{id}/reset-bump-date
+        put_form(s, f"/t/{topic_id}/reset-bump-date", [])
+    except Exception as e:
+        # Non-fatal: log and carry on
+        log.warning("reset-bump-date failed for topic %s: %s", topic_id, e)
 
 def post_json(s: requests.Session, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
     r = _request_with_backoff(s, "POST", f"{BASE}{path}", json=json)
     return r.json()
 
-def put_json(s: requests.Session, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
-    r = _request_with_backoff(s, "PUT", f"{BASE}{path}", json=json)
-    return r.json()
+
 
 # --------------------------------------------------------------------------------------
 # Search helpers (UID tag, marker)
@@ -158,15 +180,39 @@ def first_post_id_and_raw(topic_json: Dict[str, Any]) -> Tuple[int | None, str]:
     p0 = posts[0]
     return p0.get("id"), p0.get("raw", "")
 
-def update_first_post_raw(s: requests.Session, post_id: int, new_raw: str) -> Dict[str, Any]:
-    return put_form(s, f"/posts/{post_id}.json", [("post[raw]", new_raw)])
+def update_first_post_raw(
+    s: requests.Session,
+    post_id: int,
+    new_raw: str,
+    *,
+    bypass_bump: bool = False,
+    topic_id: int | None = None,
+) -> Dict[str, Any]:
+    """
+    Update the first post body. When bypass_bump=True, ask Discourse not to bump the topic.
+    If the instance ignores that hint, and topic_id is provided, reset the bump date as a fallback.
+    """
+    fields: List[Tuple[str, Any]] = [("post[raw]", new_raw)]
+    if bypass_bump:
+        # Must be top-level, not post[bypass_bump]
+        fields.append(("bypass_bump", "true"))
+    resp = put_form(s, f"/posts/{post_id}.json", fields)
+    if bypass_bump and topic_id:
+        try:
+            _reset_bump_date(s, topic_id)
+        except Exception:
+            # Non-fatal; proceed even if reset fails
+            pass
+    return resp
 
 def update_topic_tags(s: requests.Session, topic_id: int, merged_tags: Iterable[str]) -> Dict[str, Any]:
     tags = list(merged_tags)
-    fields: List[Tuple[str, Any]] = []
-    for t in tags:
-        fields.append(("tags[]", t))
-    return put_form(s, f"/t/{topic_id}.json", fields)
+    # Build the full form payload once, then PUT once.
+    fields: List[Tuple[str, Any]] = [("tags[]", t) for t in tags]
+    resp = put_form(s, f"/t/{topic_id}.json", fields)
+    # Tag updates bump the topic; immediately undo that bump.
+    _reset_bump_date(s, topic_id)
+    return resp
 
 # --------------------------------------------------------------------------------------
 # Event block parsing & normalization
@@ -447,7 +493,27 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
 
         if old_clean.strip() != fresh_clean.strip():
             log.info("Updating topic %s first post.", topic_id)
-            update_first_post_raw(s, post_id, fresh_raw)
+
+            # Decide if the change is "meaningful": start/end/location changed?
+            old_attrs = parse_event_attrs(old_clean)
+            new_attrs = parse_event_attrs(fresh_clean)
+
+            def _norm_time(x): return norm(x or "")
+            def _norm_loc(x):  return norm_location(x or "")
+
+            meaningful = (
+                _norm_time(old_attrs.get("start")) != _norm_time(new_attrs.get("start"))
+                or _norm_time(old_attrs.get("end")) != _norm_time(new_attrs.get("end"))
+                or _norm_loc(old_attrs.get("location")) != _norm_loc(new_attrs.get("location"))
+            )
+
+            # Bump only when meaningful data changed; otherwise bypass bump
+            update_first_post_raw(
+                s, post_id, fresh_raw,
+                bypass_bump=not meaningful,
+                topic_id=topic_id
+            )
+
         else:
             log.info("No body change for topic %s.", topic_id)
 
@@ -509,10 +575,16 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     if post_id:
         if marker_token.lower() not in (old_raw or "").lower():
             new_raw = f"<!-- {marker_token} -->\n{old_raw or ''}"
-            update_first_post_raw(s, post_id, new_raw)
+            # IMPORTANT: keep this quiet
+            update_first_post_raw(
+                s, post_id, new_raw,
+                bypass_bump=True,
+                topic_id=topic_id
+            )
 
     log.info("Adopted topic %s for UID=%s (retrofit tag+marker).", topic_id, uid)
     return topic_id, False
+
 
 # --------------------------------------------------------------------------------------
 # CLI

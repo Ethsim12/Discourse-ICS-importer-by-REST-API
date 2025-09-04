@@ -377,6 +377,7 @@ def create_or_adopt_topic(
     *,
     pages_to_scan: int = 8,
     time_only: bool = False,
+    adopt_only: bool = False,
 ) -> Tuple[int, bool]:
     """
     Creates a new topic unless a topic already exists anywhere on the site
@@ -450,7 +451,9 @@ def create_or_adopt_topic(
                   f"(start={trip[0]} end={trip[1]} loc={trip[2]})"
               )     
               return tid, False
-
+    # In adopt-only mode, don't create here.
+    if adopt_only:
+        return None, False
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [
         ("title", title),
@@ -467,6 +470,76 @@ def create_or_adopt_topic(
     logging.info(f"[ics-sync] Created new topic {tid} (title={title})")
     
     return tid, True
+    
+
+# ----------------------------------------------------------------------
+# Search-by-time fallback (verify with /t/{id}.json)
+# ----------------------------------------------------------------------
+def adopt_via_search_timewindow(
+    s: requests.Session,
+    fresh_raw: str,
+    *,
+    time_only: bool,
+    max_candidates: int = 50
+) -> int | None:
+    """Use /search.json to find candidates in a time window; verify by parsing [event ...]."""
+    attrs = parse_event_attrs(fresh_raw)
+    if not attrs:
+        return None
+    start_now = norm(attrs.get("start"))
+    end_now   = norm(attrs.get("end"))
+    loc_now   = norm_location(attrs.get("location"))
+
+    if not start_now and not end_now:
+        return None
+
+    # Build queries; prefer tagged "ics" topics if your site uses that.
+    queries: List[str] = []
+    tw = []
+    if start_now:
+        tw.append(f"after:{start_now}")
+    if end_now:
+        tw.append(f"before:{end_now}")
+    tw_str = " ".join(tw).strip()
+    if tw_str:
+        queries.append(f"tag:ics {tw_str}".strip())
+        queries.append(tw_str)  # untagged fallback
+
+    seen: Set[int] = set()
+    for q in queries:
+        try:
+            data = get_json(s, "/search.json", q=q)
+        except Exception:
+            continue
+        topic_hits = data.get("topics") or data.get("topic_list", {}).get("topics", []) or []
+        for th in topic_hits[:max_candidates]:
+            tid = th.get("id")
+            if not tid or tid in seen:
+                continue
+            seen.add(tid)
+            # Verify via source of truth
+            try:
+                tjson = get_json(s, f"/t/{tid}.json", include_raw=1)
+            except Exception:
+                continue
+            posts = tjson.get("post_stream", {}).get("posts", []) or []
+            if not posts:
+                continue
+            raw0 = posts[0].get("raw", "") or ""
+            a = parse_event_attrs(raw0)
+            if not a:
+                continue
+            trip_hit = (norm(a.get("start")), norm(a.get("end")), norm_location(a.get("location")))
+            trip_want = (start_now, end_now, loc_now)
+            if time_only:
+                if (trip_hit[0], trip_hit[1]) == (trip_want[0], trip_want[1]) and close_enough_loc(trip_hit[2], trip_want[2]):
+                    logging.info(f"[ics-sync] Adopting existing topic via search (time-only): {tid}")
+                    return tid
+            else:
+                if trip_hit == trip_want:
+                    logging.info(f"[ics-sync] Adopting existing topic via search (strict match): {tid}")
+                    return tid
+    return None
 
 # --------------------------------------------------------------------------------------
 # Main sync logic
@@ -489,7 +562,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     marker_html = f"<!-- {marker_token} -->"
     fresh_raw = f"{marker_html}\n{event_block}\n"
 
-    # 1) Try to find an existing topic by UID tag variants or marker
+    # 1) Try to find an existing topic by UID tag variants or marker (search-first)
     topic_id = search_topic_by_uid_tag_then_marker(s, uid, marker_token)
 
     if topic_id:
@@ -543,7 +616,42 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
         # Do not change title or category on update
         return topic_id, False
 
-    # 2) CREATE or ADOPT path (site-wide dedupe)
+    # 2) If no UID match, ADOPT via /latest.json (no create in this pass)
+    if not topic_id:
+        category_id_peek = args.category_id or ENV_CAT_ID
+        tid_latest, _ = create_or_adopt_topic(
+            s,
+            category_id_peek,
+            summary,
+            fresh_raw,
+            [],  # tags not needed for adopt-only peek
+            pages_to_scan=args.scan_pages,
+            time_only=args.time_only_dedupe,
+            adopt_only=True,
+        )
+        if tid_latest:
+            topic_id = tid_latest
+
+    # 3) If still not found, ADOPT via /search.json time window (verify hits)
+    if not topic_id:
+        # Optional small wait for index catch-up
+        try:
+            wait_ms = int(getattr(args, "search_wait_ms", 500))
+        except Exception:
+            wait_ms = 500
+        if wait_ms > 0:
+            time.sleep(wait_ms / 1000.0)
+        tid_time = adopt_via_search_timewindow(
+            s,
+            fresh_raw,
+            time_only=args.time_only_dedupe,
+            max_candidates=50,
+        )
+        if tid_time:
+            topic_id = tid_time
+
+    # 4) CREATE or UPDATE depending on what we found
+
     category_id = args.category_id or ENV_CAT_ID
     if not category_id:
         log.error("Missing category id for CREATE (use --category-id or DISCOURSE_CATEGORY_ID). Skipping UID=%s", uid)
@@ -556,15 +664,19 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     tags = sorted(tags)
 
     title = summary
-    topic_id, was_created = create_or_adopt_topic(
-        s,
-        category_id,
-        title,
-        fresh_raw,
-        tags,
-        pages_to_scan=args.scan_pages,
-        time_only=args.time_only_dedupe,
-    )
+    was_created = False
+    if not topic_id:
+        # No matches anywhere → create new topic
+        topic_id, was_created = create_or_adopt_topic(
+            s,
+            category_id,
+            title,
+            fresh_raw,
+            tags,
+            pages_to_scan=args.scan_pages,
+            time_only=args.time_only_dedupe,
+            adopt_only=False,
+        )
 
     if was_created:
         log.info("Created topic %s for UID=%s", topic_id, uid)
@@ -604,7 +716,8 @@ def main() -> None:
     ap.add_argument("--category-id", help="Numeric category id (CREATE only; update never moves category)")
     ap.add_argument("--site-tz", default=SITE_TZ_DEFAULT, help=f"Timezone name for rendering times (default: {SITE_TZ_DEFAULT})")
     ap.add_argument("--static-tags", default="", help="Comma separated static tags to add on create/update (merged with existing)")
-    ap.add_argument("--scan-pages", type=int, default=8, help="How many /latest pages to scan site-wide for duplicates (default: 8)")
+    ap.add_argument("--scan-pages", type=int, default=8, help="How many /latest pages to scan site-wide for duplicates (default: 8; ≈ 240–400 topics)")
+    ap.add_argument("--search-wait-ms", type=int, default=500, help="Wait this many ms before /search.json time-window fallback (default: 500)")
     ap.add_argument("--time-only-dedupe", action="store_true", default=False,
                     help="Treat events with same start/end as duplicates regardless of location (location becomes 'close' check)")
     args = ap.parse_args()

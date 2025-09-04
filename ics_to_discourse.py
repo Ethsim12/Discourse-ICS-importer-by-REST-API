@@ -405,9 +405,11 @@ def create_or_adopt_topic(
         candidate_triples.add((start_now, norm(end_legacy), loc_now))
     if start_legacy and end_legacy:
         candidate_triples.add((norm(start_legacy), norm(end_legacy), loc_now))
-
+      
     log.info("[dup-scan] site_tz=%s", site_tz)
+    log.info("[dup-scan] summary=%s loc=%s", new_attrs.get("name") or title, loc_now or "(none)")
     log.info("[dup-scan] candidates=%s", sorted(candidate_triples))
+    
 
     time_only_candidates: Set[Tuple[str, str]] = {(t[0], t[1]) for t in candidate_triples}
 
@@ -443,7 +445,8 @@ def create_or_adopt_topic(
 
             # Strict: times + normalized location
             if trip in candidate_triples:
-                logging.info(f"[ics-sync] Adopting existing topic by site-wide match: {tid}")
+              logging.info(f"[ics-sync] Adopting existing topic by site-wide match: {tid} "
+                           f"(start={trip[0]} end={trip[1]} loc={trip[2]})")     
                 return tid, False
 
     # Else: create a new topic
@@ -456,8 +459,11 @@ def create_or_adopt_topic(
     for t in tags:
         fields.append(("tags[]", t))
     data = post_form(s, "/posts.json", fields)
+
     tid = data.get("topic_id")
-    logging.info(f"[ics-sync] Created new topic {tid}")
+  
+    logging.info(f"[ics-sync] Created new topic {tid} (title={title})")
+    
     return tid, True
 
 # --------------------------------------------------------------------------------------

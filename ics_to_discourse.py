@@ -22,6 +22,53 @@ Usage:
   python3 ics_to_discourse.py --ics https://example.com/cal.ics --static-tags calendar,google
 """
 
+# -------------------------------------------------------------------
+# Flow (deduplication order & bump policy)
+# -------------------------------------------------------------------
+# Preferred order (this version):
+#   1) Scan /latest.json pages (default: 8, ≈ 240–400 topics)
+#        └─ compare start/end/location
+#           ├─ if equal → ADOPT topic (see Key)
+#           └─ else     → continue
+#   2) Fallback: /search.json by UID tag / hidden marker (after brief wait)
+#        └─ if match → UPDATE topic (see Key)
+#   3) Else → CREATE new topic
+#
+# Diagram
+# -------
+# ICS event comes in
+#         |
+#         v
+# Scan /latest.json pages (default: 8, ≈ 240–400 topics)
+#    by comparing start/end/location
+#         |
+#         |--- match found → adopt topic
+#         |
+#         |--- no match →
+#                |
+#                v
+#          (wait ~500ms) Check by UID tag / marker using /search.json
+#                |
+#                |--- match found → update topic
+#                |
+#                |--- no match →
+#                         |
+#                         v
+#                    Create new topic
+#
+# Key
+# ---
+# - UPDATE (UID match):
+#     • If start/end/location changed → meaningful → bump topic
+#     • If start/end/location unchanged → non-meaningful → do NOT bump
+#
+# - ADOPT (time/location match, different UID from feed):
+#     • Always non-meaningful → retrofit UID marker/tag silently (no bump)
+#
+# - CREATE:
+#     • New topic, with UID marker/tag and event block
+# -------------------------------------------------------------------
+
 from __future__ import annotations
 
 import os
@@ -377,6 +424,7 @@ def create_or_adopt_topic(
     *,
     pages_to_scan: int = 8,
     time_only: bool = False,
+    adopt_only: bool = False,
 ) -> Tuple[int, bool]:
     """
     Creates a new topic unless a topic already exists anywhere on the site
@@ -450,6 +498,10 @@ def create_or_adopt_topic(
                   f"(start={trip[0]} end={trip[1]} loc={trip[2]})"
               )     
               return tid, False
+              
+    # In adopt-only mode, do not create here.
+    if adopt_only:
+        return None, False
 
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [
@@ -489,8 +541,25 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     marker_html = f"<!-- {marker_token} -->"
     fresh_raw = f"{marker_html}\n{event_block}\n"
 
-    # 1) Try to find an existing topic by UID tag variants or marker
-    topic_id = search_topic_by_uid_tag_then_marker(s, uid, marker_token)
+       # 1) ADOPT-FIRST: scan /latest.json by start/end/location (handles UID noise)
+    category_id = args.category_id or ENV_CAT_ID
+    topic_id, _adopt_created = create_or_adopt_topic(
+        s,
+        category_id,
+        summary,
+        fresh_raw,
+        [],  # tags not needed for adopt-only check
+        pages_to_scan=args.scan_pages,
+        time_only=args.time_only_dedupe,
+        adopt_only=True,
+    )
+
+    # 2) SEARCH FALLBACK: if not found in /latest, try UID tag / marker via /search.json
+    if not topic_id and args.search_mode != "off":
+        if args.search_wait_ms > 0:
+            # allow search index to catch up if we've just edited/created something else
+            time.sleep(args.search_wait_ms / 1000.0)
+        topic_id = search_topic_by_uid_tag_then_marker(s, uid, marker_token)
 
     if topic_id:
         # UPDATE path
@@ -543,8 +612,8 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
         # Do not change title or category on update
         return topic_id, False
 
-    # 2) CREATE or ADOPT path (site-wide dedupe)
-    category_id = args.category_id or ENV_CAT_ID
+    # 3) CREATE path (if not found by latest or search)
+    category_id = category_id  # already computed above
     if not category_id:
         log.error("Missing category id for CREATE (use --category-id or DISCOURSE_CATEGORY_ID). Skipping UID=%s", uid)
         return None, False
@@ -564,6 +633,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
         tags,
         pages_to_scan=args.scan_pages,
         time_only=args.time_only_dedupe,
+        adopt_only=False,
     )
 
     if was_created:
@@ -604,7 +674,11 @@ def main() -> None:
     ap.add_argument("--category-id", help="Numeric category id (CREATE only; update never moves category)")
     ap.add_argument("--site-tz", default=SITE_TZ_DEFAULT, help=f"Timezone name for rendering times (default: {SITE_TZ_DEFAULT})")
     ap.add_argument("--static-tags", default="", help="Comma separated static tags to add on create/update (merged with existing)")
-    ap.add_argument("--scan-pages", type=int, default=8, help="How many /latest pages to scan site-wide for duplicates (default: 8)")
+    ap.add_argument("--scan-pages", type=int, default=8, help="How many /latest pages to scan site-wide for duplicates (default: 8; ≈ 240–400 topics)")
+    ap.add_argument("--search-mode", choices=["off","fallback"], default="fallback",
+                    help="Use /search.json by UID tag/marker after /latest scan (default: fallback; 'off' disables search fallback)")
+    ap.add_argument("--search-wait-ms", type=int, default=500,
+                    help="Wait this many ms before /search.json to let the search index catch up (default: 500)"
     ap.add_argument("--time-only-dedupe", action="store_true", default=False,
                     help="Treat events with same start/end as duplicates regardless of location (location becomes 'close' check)")
     args = ap.parse_args()

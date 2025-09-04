@@ -448,8 +448,8 @@ def create_or_adopt_topic(
               logging.info(
                   f"[ics-sync] Adopting existing topic by site-wide match: {tid} "
                   f"(start={trip[0]} end={trip[1]} loc={trip[2]})"
-                )     
-                return tid, False
+              )     
+              return tid, False
 
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [

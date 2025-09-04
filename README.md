@@ -141,7 +141,7 @@ DISCOURSE_API_USERNAME=system
 ICS_URL=https://calendar.example.com/my.ics
 CATEGORY_ID=42
 SITE_TZ=Europe/London
-DEFAULT_TAGS=events,calendar
+DISCOURSE_DEFAULT_TAGS=events,calendar
 ```
 
 Create the service unit:

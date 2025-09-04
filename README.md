@@ -96,6 +96,8 @@ Your directory layout should now look like:
 └── Discourse-ICS-importer-by-REST-API/
 ```
 
+> Tip: secure with `chmod 700 /opt/ics-sync/`
+
 ## Run it
 
 From the repo directory:

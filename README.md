@@ -66,3 +66,23 @@ python3 ics_to_discourse.py --ics "$ICS_URL" \
   --static-tags "${DEFAULT_TAGS:-}"
 ```
 
+- - -
+
+### Running with systemd
+
+If you want to run this script on a schedule, a `systemd` timer is recommended.
+
+- Use [`flock`](https://man7.org/linux/man-pages/man1/flock.1.html) to prevent overlapping runs.  
+  Without it, `systemd` may try to start a new instance while the previous one is still running.
+
+- Example pattern (inside your service unit):
+
+  ```ini
+  ExecStart=/usr/bin/flock -n /run/ics-sync.lock -c '/opt/ics-sync/venv/bin/python /path/to/ics_to_discourse.py'
+  ```
+
+This ensures only one run at a time. If the lock is busy, the new run exits immediately.
+	•	By default, a timer with `Persistent=false` will not “catch up” on missed runs (e.g. if the machine was off).
+If you want catch-up behaviour, use `OnCalendar=` with `Persistent=true`.
+
+That’s it — add a `.timer` for whatever schedule you need (e.g. every 6h).

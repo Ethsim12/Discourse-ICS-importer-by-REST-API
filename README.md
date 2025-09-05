@@ -11,17 +11,35 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
 - **Respectful tag handling:** optional tags are set on **first create** only; subsequent updates leave your manually-added tags intact, but may create new tags if the ics feed is "noisy".
 - **Timezone aware:** formats times using the timezone of your choosing for human-readable bodies.
 
+## How it works
+
+- Parses an ICS feed into one topic per event.
+- Matches existing topics by UID tag or hidden marker.
+- Falls back to time/location matching when no UID is present.
+- Updates existing topics instead of creating duplicates.
+
 ## How it works (high level)
 
-1. Fetch ICS → parse `VEVENT`s (SUMMARY, DTSTART, DTEND, LOCATION, DESCRIPTION, etc.).
-2. Compute a stable per-event identifier (hash derived from ICS `UID`) → used as a hidden marker + ID tag.
-3. For each event:
-   - First, search Discourse topics by UID marker/tag via `/search.json`.  
-   - If a match is found → **update** the first post body.  
-   - If no match → scan recent topics (`/latest.json`, ~8 pages) for an existing event with the same start/end/location.  
-     - If found → **adopt** that topic and add the UID marker.  
-     - Else → **create** a new topic with default tags + UID tag.
-4. A non-blocking file lock (`flock`) ensures that only one run executes at a time. If another run is already in progress, this one exits cleanly.
+- Parses events from the ICS feed.
+- Looks up by UID tag (hash) or hidden marker.
+- If not found, searches /search.json by event start/end (with verification).
+- Falls back to scanning /latest.json pages **only on API error**.
+- Deduplication can be strict (time+location) or looser (time-only mode with `--time-only-dedupe`).
+- On updates, tries to suppress topic bumps with `bypass_bump`; if the instance ignores it,
+  falls back to invoking `/reset-bump-date` and logs when that happens.
+- Also resets bump date after tag merges (to avoid “false bumps”).
+- Creates new topics or updates existing ones without changing category or manually-edited titles.
+## Usage
+
+Basic examples:
+
+  python3 ics_to_discourse.py --ics my.ics --category-id 12
+  python3 ics_to_discourse.py --ics https://example.com/cal.ics --static-tags calendar,google
+
+### Optional flags
+
+  --scan-pages N         How many /latest pages to scan if /search.json fails (default: 8)
+  --time-only-dedupe     Treat events with same start/end as duplicates even if location differs
 
 ## Requirements
 

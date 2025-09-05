@@ -81,13 +81,19 @@ def _request_with_backoff(s: requests.Session, method: str, url: str, **kwargs) 
         if r.status_code != 429 and r.status_code < 500:
             try:
                 r.raise_for_status()
-            except requests.HTTPError as e:
+            except requests.HTTPError:
+                # Try to log Discourse's error payloads for debugging (e.g. 422)
                 try:
-                    log.error("HTTP %s %s failed (%s): %s",
-                              method, url, r.status_code, r.json())
+                    err = r.json()
                 except Exception:
-                    log.error("HTTP %s %s failed (%s). Body: %r",
-                              method, url, r.status_code, r.text[:800])
+                    err = {"body": r.text[:800]}
+                ctx = kwargs.get("_request_context")
+                if ctx:
+                    log.error("HTTP %s %s failed (%s): %s | ctx=%s",
+                              method, url, r.status_code, err, ctx)
+                else:
+                    log.error("HTTP %s %s failed (%s): %s",
+                              method, url, r.status_code, err)
                 raise
 
             time.sleep(0.2)  # be gentle even on success
@@ -98,6 +104,7 @@ def _request_with_backoff(s: requests.Session, method: str, url: str, **kwargs) 
         delay = min(delay * 2, 30.0)
     r.raise_for_status()
     return r
+
 
 def get_json(s: requests.Session, path: str, **params) -> Dict[str, Any]:
     r = _request_with_backoff(s, "GET", f"{BASE}{path}", params=params)

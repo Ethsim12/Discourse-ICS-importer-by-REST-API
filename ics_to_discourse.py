@@ -79,7 +79,17 @@ def _request_with_backoff(s: requests.Session, method: str, url: str, **kwargs) 
     for _ in range(6):  # ~1 + 2 + 4 + 8 + 16 + 30
         r = s.request(method, url, timeout=60, **kwargs)
         if r.status_code != 429 and r.status_code < 500:
-            r.raise_for_status()
+            try:
+                r.raise_for_status()
+            except requests.HTTPError as e:
+                try:
+                    log.error("HTTP %s %s failed (%s): %s",
+                              method, url, r.status_code, r.json())
+                except Exception:
+                    log.error("HTTP %s %s failed (%s). Body: %r",
+                              method, url, r.status_code, r.text[:800])
+                raise
+
             time.sleep(0.2)  # be gentle even on success
             return r
         retry_after = r.headers.get("Retry-After")

@@ -32,16 +32,17 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
 
 ## Usage
 
-Basic examples:
-
-  python3 ics_to_discourse.py --ics my.ics --category-id 12
-  python3 ics_to_discourse.py --ics https://example.com/cal.ics --static-tags calendar,google
+| Command | Description |
+|---------|-------------|
+| `python3 ics_to_discourse.py --ics my.ics --category-id 12` | Import events from a local `.ics` file into category 12 |
+| `python3 ics_to_discourse.py --ics https://example.com/cal.ics --static-tags calendar,google` | Import events from a remote `.ics` URL and add static tags `calendar, google` |
 
 ### Optional flags
 
-  --scan-pages N         How many /latest pages to scan if /search.json fails (default: 8)
-  --time-only-dedupe     Treat events with same start/end as duplicates even if location differs
-
+| Flag | Description |
+|------|-------------|
+| `--scan-pages N` | How many `/latest` pages to scan if `/search.json` fails (default: 8) |
+| `--time-only-dedupe` | Treat events with the same start/end as duplicates even if location differs |
 ## Debugging
 
 When running under `systemd`, follow logs live:

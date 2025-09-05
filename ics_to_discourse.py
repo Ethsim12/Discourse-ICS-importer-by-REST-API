@@ -629,7 +629,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     tags = set()
     tags.update(_norm_tags(DEFAULT_TAGS))
     tags.update(_norm_tags(args.static_tags))
-    tags.add(uid_tag)
+    #tags.add(uid_tag)
     tags = sorted(tags)
 
     title = summary

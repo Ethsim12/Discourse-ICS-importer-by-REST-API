@@ -53,8 +53,8 @@ Typical log patterns:
 
 - **Duplicate scan context**  
   `INFO: [dup-scan] site_tz=Europe/London`  
-  `INFO: [dup-scan] summary=Thermal & Statistical Physics - Lecture loc=up physics b1`  
-  `INFO: [dup-scan] candidates=[('2025-11-17 11:00','2025-11-17 12:00','up physics b1'), ...]`
+  `INFO: [dup-scan] summary=Meeting about peas - Lecture loc=office V3`  
+  `INFO: [dup-scan] candidates=[('2025-10-17 10:00','2025-10-17 11:00','up physics b1'), ...]`
 
 - **Adoption paths**  
   `INFO: [ics-sync] Adopting existing topic via time-window search: 5272`  

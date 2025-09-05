@@ -146,6 +146,11 @@ Your directory layout should now look like:
 
 > Tip: secure with `chmod 700 /opt/ics-sync/`
 
+> If you used an `env` file the folder where your script lives needs to be aware of the `env` that lives in a different folder
+> `set -a`
+> `source /opt/ics-sync/.env`
+> `set +a`
+
 ## Run it
 
 From the repo directory:

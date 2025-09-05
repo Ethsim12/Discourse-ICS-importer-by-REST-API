@@ -251,6 +251,55 @@ def close_enough_loc(a: str, b: str) -> bool:
     return a == b or (a in b) or (b in a)
 
 # --------------------------------------------------------------------------------------
+# Time-window search (via /search.json) with verification
+# --------------------------------------------------------------------------------------
+def _verify_event_hit(s: requests.Session,
+                      tid: int,
+                      candidate_triples: Set[Tuple[str, str, str]],
+                      loc_now: str,
+                      time_only: bool) -> bool:
+    """Fetch topic, parse [event] attrs, and verify time/location match."""
+    tjson = get_json(s, f"/t/{tid}.json", include_raw=1)
+    posts = tjson.get("post_stream", {}).get("posts", []) or []
+    if not posts:
+        return False
+    first_raw = posts[0].get("raw", "") or ""
+    attrs = parse_event_attrs(first_raw)
+    if not attrs:
+        return False
+    trip = (norm(attrs.get("start")), norm(attrs.get("end")), norm_location(attrs.get("location")))
+    if time_only:
+        return (trip[0], trip[1]) in {(t[0], t[1]) for t in candidate_triples} and close_enough_loc(trip[2], loc_now)
+    return trip in candidate_triples
+
+def search_by_timewindow_then_verify(s: requests.Session,
+                                     start_now: str,
+                                     end_now: str,
+                                     loc_now: str,
+                                     candidate_triples: Set[Tuple[str, str, str]],
+                                     time_only: bool) -> Tuple[int | None, bool]:
+    """
+    Try a broad /search.json query using exact time strings, then verify each hit.
+    Returns (topic_id, api_error) where api_error=True means we should fallback to /latest.json.
+    """
+    # Build a reasonably selective exact-phrase query; verification will do the real matching.
+    q_parts = []
+    if start_now: q_parts.append(f"\"{start_now}\"")
+    if end_now:   q_parts.append(f"\"{end_now}\"")
+    q = " ".join(q_parts) or "\"\""  # never empty
+    try:
+        data = get_json(s, "/search.json", q=q)
+        topics = data.get("topics") or data.get("topic_list", {}).get("topics", []) or []
+        for t in topics:
+            tid = t.get("id")
+            if tid and _verify_event_hit(s, tid, candidate_triples, loc_now, time_only):
+                return tid, False
+        return None, False  # no hits → do NOT fallback to /latest.json
+    except Exception:
+        # Only an API error should trigger the /latest.json fallback.
+        return None, True
+
+# --------------------------------------------------------------------------------------
 # Time handling (cover legacy encoding)
 # --------------------------------------------------------------------------------------
 def _parse_local_dt_string(s: str) -> datetime | None:
@@ -410,46 +459,57 @@ def create_or_adopt_topic(
     log.info("[dup-scan] summary=%s loc=%s", new_attrs.get("name") or title, loc_now or "(none)")
     log.info("[dup-scan] candidates=%s", sorted(candidate_triples))
     
+    # 1) Prefer /search.json time-window search (verify each hit)
+    tid, api_error = search_by_timewindow_then_verify(
+        s,
+        start_now,
+        end_now,
+        loc_now,
+        candidate_triples,
+        time_only=time_only,
+    )
+    if tid:
+        log.info(f"[ics-sync] Adopting existing topic via time-window search: {tid}")
+        return tid, False
 
-    time_only_candidates: Set[Tuple[str, str]] = {(t[0], t[1]) for t in candidate_triples}
-
-    # Site-wide scan through /latest pages
-    for page in range(max(1, pages_to_scan)):
-        data = get_json(s, "/latest.json", page=page, no_definitions="true")
-        topics = data.get("topic_list", {}).get("topics", []) or []
-        if not topics:
-            break
-
-        for t in topics:
-            tid = t["id"]
-            tjson = get_json(s, f"/t/{tid}.json", include_raw=1)
-            posts = tjson.get("post_stream", {}).get("posts", []) or []
-            if not posts:
-                continue
-            first_raw = posts[0].get("raw", "") or ""
-            attrs = parse_event_attrs(first_raw)
-            if not attrs:
-                continue
-
-            trip = (
-                norm(attrs.get("start")),
-                norm(attrs.get("end")),
-                norm_location(attrs.get("location")),
-            )
-            log.debug("[dup-scan] tid=%s trip=%s", tid, trip)
-
-            # Time-only (optional) with loose location tolerance
-            if time_only and (trip[0], trip[1]) in time_only_candidates and close_enough_loc(trip[2], loc_now):
-                logging.info(f"[ics-sync] Adopting existing topic by time match (time-only mode): {tid}")
-                return tid, False
-
-            # Strict: times + normalized location
-            if trip in candidate_triples:
-              logging.info(
-                  f"[ics-sync] Adopting existing topic by site-wide match: {tid} "
-                  f"(start={trip[0]} end={trip[1]} loc={trip[2]})"
-              )     
-              return tid, False
+    # 2) Fallback ONLY on API error from /search.json → scan /latest.json pages
+    if api_error:
+        time_only_candidates: Set[Tuple[str, str]] = {(t[0], t[1]) for t in candidate_triples}
+        for page in range(max(1, pages_to_scan)):
+            data = get_json(s, "/latest.json", page=page, no_definitions="true")
+            topics = data.get("topic_list", {}).get("topics", []) or []
+            if not topics:
+                break
+            for t in topics:
+                tid2 = t["id"]
+                tjson = get_json(s, f"/t/{tid2}.json", include_raw=1)
+                posts = tjson.get("post_stream", {}).get("posts", []) or []
+                if not posts:
+                    continue
+                first_raw = posts[0].get("raw", "") or ""
+                attrs = parse_event_attrs(first_raw)
+                if not attrs:
+                    continue
+                trip = (
+                    norm(attrs.get("start")),
+                    norm(attrs.get("end")),
+                    norm_location(attrs.get("location")),
+                )
+                log.debug("[dup-scan] tid=%s trip=%s", tid2, trip)
+                # Time-only (optional) with loose location tolerance
+                if time_only and (trip[0], trip[1]) in time_only_candidates and close_enough_loc(trip[2], loc_now):
+                    log.info(f"[ics-sync] Adopting existing topic by time match (time-only mode): {tid2}")
+                    return tid2, False
+                # Strict: times + normalized location
+                if trip in candidate_triples:
+                    log.info(
+                        f"[ics-sync] Adopting existing topic by site-wide match: {tid2} "
+                        f"(start={trip[0]} end={trip[1]} loc={trip[2]})"
+                    )
+                    return tid2, False
+    else:
+        # No hits on full search ⇒ do NOT scan /latest.json (per design)
+        log.info("[ics-sync] No hits from time-window search; skipping /latest.json fallback.")
 
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [

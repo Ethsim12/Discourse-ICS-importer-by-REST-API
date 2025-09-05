@@ -14,14 +14,14 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
 ## How it works
 
 - Parses an ICS feed into one topic per event.
-- Matches existing topics by UID tag or hidden marker.
-- Falls back to time/location matching when no UID is present.
+- Matches existing topics by hidden Marker.
+- Falls back to time/location matching when no UID marker is present.
 - Updates existing topics instead of creating duplicates.
 
 ## How it works (high level)
 
 - Parses events from the ICS feed.
-- Looks up by UID tag (hash) or hidden marker.
+- Looks up by UID marker.
 - If not found, searches /search.json by event start/end (with verification).
 - Falls back to scanning /latest.json pages **only on API error**.
 - Deduplication can be strict (time+location) or looser (time-only mode with `--time-only-dedupe`).

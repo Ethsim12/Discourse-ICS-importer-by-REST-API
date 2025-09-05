@@ -29,6 +29,7 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
   falls back to invoking `/reset-bump-date` and logs when that happens.
 - Also resets bump date after tag merges (to avoid “false bumps”).
 - Creates new topics or updates existing ones without changing category or manually-edited titles.
+
 ## Usage
 
 Basic examples:
@@ -40,6 +41,34 @@ Basic examples:
 
   --scan-pages N         How many /latest pages to scan if /search.json fails (default: 8)
   --time-only-dedupe     Treat events with same start/end as duplicates even if location differs
+
+## Debugging
+
+When running under `systemd`, follow logs live:
+
+`journalctl -u ics-sync.service -f`
+
+Typical log patterns:
+
+- **Duplicate scan context**  
+  `INFO: [dup-scan] site_tz=Europe/London`  
+  `INFO: [dup-scan] summary=Thermal & Statistical Physics - Lecture loc=up physics b1`  
+  `INFO: [dup-scan] candidates=[('2025-11-17 11:00','2025-11-17 12:00','up physics b1'), ...]`
+
+- **Adoption paths**  
+  `INFO: [ics-sync] Adopting existing topic via time-window search: 5272`  
+  `INFO: [ics-sync] Adopting existing topic by time match (time-only mode): 5272`  
+  `INFO: [ics-sync] Adopting existing topic by site-wide match: 5272 (start=... end=... loc=...)`
+
+- **Bump suppression**  
+  `INFO: Invoking reset-bump-date fallback for topic 5272`  
+  `WARNING: reset-bump-date failed for topic 5272: 403 Client Error: Forbidden for url: ...`  
+  > If you see a 403 here, your API key is not a **global staff key**. This endpoint requires an admin/mod key tied to a staff user.
+
+- **Topic creation**  
+  `INFO: [ics-sync] Created new topic 5310 (title=... )`
+
+These log lines make it clear *why* a topic was adopted or created, and whether the `reset-bump-date` fallback was needed.
 
 ## Requirements
 

@@ -608,7 +608,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
         desired_tags = set(existing_tags)
         desired_tags.update(_norm_tags(DEFAULT_TAGS))
         desired_tags.update(_norm_tags(args.static_tags))
-        desired_tags.add(uid_tag)
+        #desired_tags.add(uid_tag)
 
         if set(existing_tags) != desired_tags:
             merged = sorted(desired_tags)

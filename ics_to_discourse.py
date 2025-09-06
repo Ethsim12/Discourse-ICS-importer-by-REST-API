@@ -595,14 +595,17 @@ def create_or_adopt_topic(
         log.info(f"[ics-sync] Adopting existing topic via time-window search: {tid}")
         return tid, False
 
-    # 2) Fallback ONLY on API error from /search.json → scan /latest.json pages
-    if api_error:
+
     # 1b) If no time-window hit, try description-first candidate search
     desc_phrases = build_description_queries(raw, title)
     if desc_phrases:
-        cand_ids = search_candidate_topic_ids_by_description(s, desc_phrases, max_ids=400, max_pages_per_query=6)
+        cand_ids = search_candidate_topic_ids_by_description(
+            s, desc_phrases, max_ids=400, max_pages_per_query=6
+        )
         if cand_ids:
-            tid2 = verify_candidate_ids_by_event(s, cand_ids, candidate_triples, loc_now, time_only)
+            tid2 = verify_candidate_ids_by_event(
+                s, cand_ids, candidate_triples, loc_now, time_only
+            )
             if tid2:
                 log.info(f"[ics-sync] Adopting existing topic via description search: {tid2}")
                 return tid2, False
@@ -631,11 +634,9 @@ def create_or_adopt_topic(
                     norm_location(attrs.get("location")),
                 )
                 log.debug("[dup-scan] tid=%s trip=%s", tid2, trip)
-                # Time-only (optional) with loose location tolerance
                 if time_only and (trip[0], trip[1]) in time_only_candidates and close_enough_loc(trip[2], loc_now):
                     log.info(f"[ics-sync] Adopting existing topic by time match (time-only mode): {tid2}")
                     return tid2, False
-                # Strict: times + normalized location
                 if trip in candidate_triples:
                     log.info(
                         f"[ics-sync] Adopting existing topic by site-wide match: {tid2} "
@@ -643,7 +644,9 @@ def create_or_adopt_topic(
                     )
                     return tid2, False
     else:
-        log.info("[ics-sync] pages_to_scan=0 → skipping /latest.json fallback.")    
+        log.info("[ics-sync] pages_to_scan=0 → skipping /latest.json fallback.")
+
+   
 
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [

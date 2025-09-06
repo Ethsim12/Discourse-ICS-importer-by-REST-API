@@ -432,6 +432,112 @@ def make_event_block(ev, site_tz: str, include_details: bool = True) -> Tuple[st
     return summary, content, uid
 
 # --------------------------------------------------------------------------------------
+# Search helpers (description-first candidates)
+# --------------------------------------------------------------------------------------
+def _extract_searchable_lines(event_block_md: str) -> list[str]:
+    """
+    From the rendered event block markdown, extract the lines we want to search on:
+    everything inside [event] ... [/event] up to (but not including) any line
+    that starts with 'Last Updated:' (case-insensitive).
+    """
+    m = re.search(r"\[event[^\]]*\](.*)\[/event\]", event_block_md, flags=re.I | re.S)
+    body = (m.group(1) if m else event_block_md) or ""
+    lines = []
+    for line in body.splitlines():
+        if re.match(r"(?i)^\s*Last Updated\s*:", line):
+            break
+        line = line.strip()
+        if line:
+            lines.append(line)
+    return lines
+
+def _tokenish(s: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9/_-]{2,}", s)
+
+def build_description_queries(event_block_md: str, title: str, max_phrases: int = 6) -> list[str]:
+    lines = _extract_searchable_lines(event_block_md)
+    phrases: list[str] = []
+    if title and len(title.strip()) >= 6:
+        phrases.append(f"\"{title.strip()}\"")
+    for ln in lines:
+        low = ln.lower()
+        if "taught by" in low or "module" in low or "location" in low:
+            phrases.append(f"\"{ln}\"")
+        elif 1 <= len(_tokenish(ln)) <= 6:
+            phrases.append(f"\"{ln}\"")
+        if len(phrases) >= max_phrases:
+            break
+    if not phrases:
+        for ln in lines[:2]:
+            phrases.append(f"\"{ln}\"")
+    seen = set()
+    out = []
+    for p in phrases:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+def search_candidate_topic_ids_by_description(
+    s: requests.Session,
+    phrases: list[str],
+    max_ids: int = 400,
+    max_pages_per_query: int = 6,
+) -> list[int]:
+    ids: list[int] = []
+    seen: set[int] = set()
+    def run_query(q: str):
+        for page in range(1, max_pages_per_query + 1):
+            try:
+                data = get_json(s, "/search.json", q=q, page=page)
+            except Exception:
+                break
+            topics = data.get("topics") or data.get("topic_list", {}).get("topics", []) or []
+            if not topics:
+                break
+            for t in topics:
+                tid = t.get("id")
+                if isinstance(tid, int) and tid not in seen:
+                    seen.add(tid)
+                    ids.append(tid)
+                    if len(ids) >= max_ids:
+                        return
+        return
+    if len(phrases) >= 2:
+        run_query(" ".join(phrases[:3]))
+    for p in phrases:
+        if len(ids) >= max_ids:
+            break
+        run_query(p)
+    return ids
+
+def verify_candidate_ids_by_event(
+    s: requests.Session,
+    cand_ids: list[int],
+    candidate_triples: set[tuple[str, str, str]],
+    loc_now: str,
+    time_only: bool,
+) -> int | None:
+    time_only_pairs = {(t[0], t[1]) for t in candidate_triples}
+    for tid in cand_ids:
+        tjson = get_json(s, f"/t/{tid}.json", include_raw=1)
+        posts = tjson.get("post_stream", {}).get("posts", []) or []
+        if not posts:
+            continue
+        first_raw = posts[0].get("raw", "") or ""
+        attrs = parse_event_attrs(first_raw)
+        if not attrs:
+            continue
+        trip = (norm(attrs.get("start")), norm(attrs.get("end")), norm_location(attrs.get("location")))
+        if time_only:
+            if (trip[0], trip[1]) in time_only_pairs and close_enough_loc(trip[2], loc_now):
+                return tid
+        else:
+            if trip in candidate_triples:
+                return tid
+    return None
+
+# --------------------------------------------------------------------------------------
 # Create (with site-wide duplicate detection) or adopt
 # --------------------------------------------------------------------------------------
 def create_or_adopt_topic(
@@ -491,6 +597,18 @@ def create_or_adopt_topic(
 
     # 2) Fallback ONLY on API error from /search.json → scan /latest.json pages
     if api_error:
+    # 1b) If no time-window hit, try description-first candidate search
+    desc_phrases = build_description_queries(raw, title)
+    if desc_phrases:
+        cand_ids = search_candidate_topic_ids_by_description(s, desc_phrases, max_ids=400, max_pages_per_query=6)
+        if cand_ids:
+            tid2 = verify_candidate_ids_by_event(s, cand_ids, candidate_triples, loc_now, time_only)
+            if tid2:
+                log.info(f"[ics-sync] Adopting existing topic via description search: {tid2}")
+                return tid2, False
+
+    # 2) Fallback: scan /latest.json pages regardless of API error
+    if pages_to_scan > 0:
         time_only_candidates: Set[Tuple[str, str]] = {(t[0], t[1]) for t in candidate_triples}
         for page in range(max(1, pages_to_scan)):
             data = get_json(s, "/latest.json", page=page, no_definitions="true")
@@ -525,8 +643,7 @@ def create_or_adopt_topic(
                     )
                     return tid2, False
     else:
-        # No hits on full search ⇒ do NOT scan /latest.json (per design)
-        log.info("[ics-sync] No hits from time-window search; skipping /latest.json fallback.")
+        log.info("[ics-sync] pages_to_scan=0 → skipping /latest.json fallback.")    
 
     # Else: create a new topic
     fields: List[Tuple[str, Any]] = [

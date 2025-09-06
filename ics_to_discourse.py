@@ -773,7 +773,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
     desired = set(existing_tags)
     desired.update(_norm_tags(DEFAULT_TAGS))
     desired.update(_norm_tags(args.static_tags))
-    desired.add(uid_tag)
+    ###desired.add(uid_tag)
     if set(existing_tags) != desired:
         update_topic_tags(s, topic_id, sorted(desired))
 

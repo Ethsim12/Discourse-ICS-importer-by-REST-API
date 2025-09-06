@@ -23,7 +23,7 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
 - Parses events from the ICS feed.
 - Looks up by UID marker.
 - If not found, searches /search.json by event start/end (with verification).
-- Falls back to scanning /latest.json pages **only on API error**.
+- Falls back to scanning /latest.json pages if topic not found in search or **on API error**.
 - Deduplication can be strict (time+location) or looser (time-only mode with `--time-only-dedupe`).
 - On updates, tries to suppress topic bumps with `bypass_bump`; if the instance ignores it,
   falls back to invoking `/reset-bump-date` and logs when that happens.

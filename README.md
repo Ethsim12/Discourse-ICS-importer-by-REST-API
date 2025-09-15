@@ -214,7 +214,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/opt/ics-sync/Discourse-ICS-importer-by-REST-API
 EnvironmentFile=/etc/ics-sync.env
-ExecStart=/usr/bin/flock -n /run/ics-sync.lock -c '/opt/ics-sync/venv/bin/python /opt/ics-sync/Discourse-ICS-importer-by-REST-API/ics_to_discourse.py --ics "$ICS_URL" --category-id "$CATEGORY_ID" --site-tz "$SITE_TZ" --static-tags "${DEFAULT_TAGS:-}"'
+ExecStart=/usr/bin/flock -n /run/ics-sync.lock -- /opt/ics-sync/venv/bin/python /opt/ics-sync/Discourse-ICS-importer-by-REST-API/ics_to_discourse.py --ics ${ICS_URL} --category-id ${CATEGORY_ID} --site-tz ${SITE_TZ} --static-tags ${DISCOURSE_DEFAULT_TAGS:-}
 StandardOutput=journal
 StandardError=journal
 ```

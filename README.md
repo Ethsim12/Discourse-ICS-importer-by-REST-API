@@ -189,7 +189,7 @@ If you want catch-up behaviour, use `OnCalendar=` with `Persistent=true`.
 Create an env file with your settings:
 
 ```
-# /etc/ics-sync.env
+# /opt/ics-sync/.env
 DISCOURSE_BASE_URL=https://discuss.example.com
 DISCOURSE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DISCOURSE_API_USERNAME=system

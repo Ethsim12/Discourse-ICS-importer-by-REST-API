@@ -258,4 +258,23 @@ journalctl -u ics-sync.service --since=today
 journalctl -u ics-sync.timer --since=today
 ```
 
+You can stop a running instance with:
+
+`sudo systemctl stop ics-sync.service`
+
+This sends the SIGTERM signal to the main process started by the service.
+If your sync script traps SIGTERM correctly, it should shut down gracefully.
+
+That kills the current run of the service immediately.
+
+---
+
+If you also want to prevent the timer from triggering new runs:
+
+`sudo systemctl stop ics-sync.timer`
+
+And to keep it off after reboot:
+
+`sudo systemctl disable ics-sync.timer`
+
 > Update `ExecStart` and `WorkingDirectory` paths if your repo/venv lives elsewhere.

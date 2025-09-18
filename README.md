@@ -279,3 +279,35 @@ You can stop a running instance with:
 - `sudo systemctl stop ics-sync.timer && sudo systemctl disable ics-sync.timer`
 
 > Update `ExecStart` and `WorkingDirectory` paths if your repo/venv lives elsewhere.
+
+## 🔒 Optional hardening: run under a dedicated user
+
+By default this guide uses the `www-data` user so the sync script can
+traverse `/opt/ics-sync` and read the `.env` file.  
+If you want stricter isolation, you can create a dedicated system account
+just for the sync job:
+
+```bash
+# Create dedicated account (no login shell)
+sudo adduser --system --group --home /opt/ics-sync ics-sync
+```
+
+Update your systemd service unit:
+
+```ini
+[Service]
+User=ics-sync
+Group=ics-sync
+WorkingDirectory=/opt/ics-sync
+```
+
+Then adjust ownership and permissions:
+
+```bash
+sudo chown -R ics-sync:ics-sync /opt/ics-sync
+sudo chmod 700 /opt/ics-sync
+sudo chmod 600 /opt/ics-sync/.env
+```
+
+Now only the `ics-sync` account can read the `.env` file and run the script,
+reducing the impact if the process or feed is ever compromised.

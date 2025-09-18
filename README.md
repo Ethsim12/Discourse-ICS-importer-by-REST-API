@@ -153,10 +153,11 @@ Your directory layout should now look like:
 
 ## Run it
 
-From the repo directory:
+From the repo directory in venv:
 
 ```
-../venv/bin/python3 ics_to_discourse.py --ics "$ICS_URL" \
+python3 Discourse-ICS-importer-by-REST-API/ics_to_discourse.py \
+  --ics "$ICS_URL" \
   --category-id "$CATEGORY_ID" \
   --site-tz "$SITE_TZ" \
   --static-tags "${DEFAULT_TAGS:-}"

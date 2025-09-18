@@ -5,8 +5,8 @@ Import and continuously sync events from an iCalendar (ICS) feed into a Discours
 
 ## What it does
 
-- **Parses an ICS feed** and creates/updates one Discourse topic per event. (If the same time/date & optionally location, UID deosn't matter)
-- De-duplication by UID is priortised: each event is keyed by its ICS `UID` using a stable hash-based tag and the full mash invisible in the event topic first post's body, so the same event is updated rather than duplicated, starting with easiest way of checking.
+- **Parses an ICS feed** and creates/updates one Discourse topic per event. (If the same time/date & optionally location, the UID doesn't matter)
+- De-duplication by UID is prioritised: each event is keyed by its ICS `UID` using a stable hash-based tag and the full hash invisible in the event topic first post's body, so the same event is updated rather than duplicated, starting with easiest way of checking.
 - **Timer-safe:** designed for periodic runs (e.g., every 4 hours). A file lock prevents overlapping executions.
 - **Respectful tag handling:** optional tags are set on **first create** only; subsequent updates leave your manually-added tags intact, but may create new tags if the ics feed is "noisy".
 - **Timezone aware:** formats times using the timezone of your choosing for human-readable bodies.
@@ -79,7 +79,9 @@ These log lines make it clear *why* a topic was adopted or created, and whether 
 > ⚠️ **Important:** As per [Meta post](https://meta.discourse.org/t/syncing-ical-ics-feeds-into-discourse/379361/34), the API key must be a **global key** tied to a **staff user** (e.g. `system` or an admin account). Limited-scope keys will fail on some operations (such as reset-bump-date).
 
 - Your Discourse base URL
-- Your ics feed URL (you may need to append `.ics` to end of this)
+
+- Your ICS feed URL (you may need to append `.ics` to the URL)
+
 
 ## Configuration
 
@@ -104,7 +106,7 @@ SITE_TZ=Europe/London
 Optional: comma-separated list:
 
 ```
-DEFAULT_TAGS=events,calendar
+DISCOURSE_DEFAULT_TAGS=events,calendar
 ```
 
 > Tip: `SITE_TZ` is used to render friendly times in the post body.
@@ -144,12 +146,12 @@ Your directory layout should now look like:
 └── Discourse-ICS-importer-by-REST-API/
 ```
 
-> Tip: secure with `chmod 700 /opt/ics-sync/`
+- Tip: use `chmod 755 /opt/ics-sync/` so `www-data` can traverse.
+- For the env file: `chown root:www-data /opt/ics-sync/.env && chmod 0640 /opt/ics-sync/.env`
 
-> If you used an `env` file the folder where your script lives needs to be aware of the `env` that lives in a different folder
-> `set -a`
-> `source /opt/ics-sync/.env`
-> `set +a`
+
+> If you want to run manually without `EnvironmentFile=`, you can export vars in your shell:
+> `set -a; source /opt/ics-sync/.env; set +a`
 
 ## Run it
 
@@ -160,7 +162,7 @@ python3 Discourse-ICS-importer-by-REST-API/ics_to_discourse.py \
   --ics "$ICS_URL" \
   --category-id "$CATEGORY_ID" \
   --site-tz "$SITE_TZ" \
-  --static-tags "${DEFAULT_TAGS:-}"
+  --static-tags "${DISCOURSE_DEFAULT_TAGS:-}"
 ```
 
 ---
@@ -175,7 +177,7 @@ If you want to run this script on a schedule, a `systemd` timer is recommended.
 - Example pattern (inside your service unit):
 
 ```
-ExecStart=/usr/bin/flock -n /run/ics-sync.lock -c '/opt/ics-sync/venv/bin/python /path/to/ics_to_discourse.py'
+ExecStart=/usr/bin/flock -n /run/ics-sync/sync.lock -c '/opt/ics-sync/venv/bin/python /path/to/ics_to_discourse.py'
 ```
 
 This ensures only one run at a time. If the lock is busy, the new run exits immediately.  
@@ -215,7 +217,16 @@ User=www-data
 Group=www-data
 WorkingDirectory=/opt/ics-sync
 EnvironmentFile=/opt/ics-sync/.env
-ExecStart=/usr/bin/flock -n /run/ics-sync.lock -- /opt/ics-sync/venv/bin/python /opt/ics-sync/Discourse-ICS-importer-by-REST-API/ics_to_discourse.py --ics ${ICS_URL} --category-id ${CATEGORY_ID} --site-tz ${SITE_TZ} --static-tags ${DISCOURSE_DEFAULT_TAGS:-}
+RuntimeDirectory=ics-sync
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/flock -n /run/ics-sync/sync.lock -- \
+  /opt/ics-sync/venv/bin/python \
+  /opt/ics-sync/Discourse-ICS-importer-by-REST-API/ics_to_discourse.py \
+    --ics "${ICS_URL}" \
+    --category-id "${CATEGORY_ID}" \
+    --site-tz "${SITE_TZ}" \
+    --static-tags "${DISCOURSE_DEFAULT_TAGS:-}"
+TimeoutStartSec=30min
 StandardOutput=journal
 StandardError=journal
 ```
@@ -263,19 +274,8 @@ You can stop a running instance with:
 
 `sudo systemctl stop ics-sync.service`
 
-This sends the SIGTERM signal to the main process started by the service.
-If your sync script traps SIGTERM correctly, it should shut down gracefully.
-
-That kills the current run of the service immediately.
-
----
-
-If you also want to prevent the timer from triggering new runs:
-
-`sudo systemctl stop ics-sync.timer`
-
-And to keep it off after reboot:
-
-`sudo systemctl disable ics-sync.timer`
+- This stops the **current run** (SIGTERM).  
+- To prevent **future runs**, stop and disable the **timer**:
+- `sudo systemctl stop ics-sync.timer && sudo systemctl disable ics-sync.timer`
 
 > Update `ExecStart` and `WorkingDirectory` paths if your repo/venv lives elsewhere.

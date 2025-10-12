@@ -416,6 +416,7 @@ def make_event_block(ev, site_tz: str, include_details: bool = True) -> Tuple[st
     event_open += f' status="public" name="{summary}"'
     if location:
         event_open += f' location="{location}"'
+    event_open += f' reminders="bumpTopic.5.minutes"'
     event_open += f' timezone="{site_tz}"]'
 
     body_lines: List[str] = []

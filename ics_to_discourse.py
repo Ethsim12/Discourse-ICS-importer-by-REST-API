@@ -209,6 +209,26 @@ def update_first_post_raw(
     Update the first post body. When bypass_bump=True, ask Discourse not to bump the topic.
     If the instance ignores that hint, and topic_id is provided, reset the bump date as a fallback.
     """
+
+
+
+    # Inject reminders="bumpTopic.5.minutes" if the opening [event ...] has no reminder(s)
+    try:
+        if "[event" in (new_raw or "") and not re.search(r'\breminders?\s*=', new_raw, flags=re.I):
+            new_raw = re.sub(
+                r'(\[event\b[^\]]*)\]',
+                r'\1 reminders="bumpTopic.5.minutes"]',
+                new_raw,
+                count=1,
+                flags=re.I,
+            )
+    except Exception as e:
+        log.warning("Failed to inject bump reminder: %s", e)
+
+
+
+
+  
     fields: List[Tuple[str, Any]] = [("post[raw]", new_raw)]
     if bypass_bump:
         # Must be top-level, not post[bypass_bump]

@@ -800,11 +800,11 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
 
     post_id, old_raw = first_post_id_and_raw(topic)
     if post_id:
-        if marker_token.lower() not in (old_raw or "").lower():
-            new_raw = f"<!-- {marker_token} -->\n{old_raw or ''}"
+        if marker_token.lower() not in (old_raw or "").lower(): #it may be that the same UID marker is in the topic for non-noisy feed, hence this commit has no effect. Therefore, i will commit to main rather than a branch
+            #new_raw = f"<!-- {marker_token} -->\n{old_raw or ''}"
             # IMPORTANT: keep this quiet
             update_first_post_raw(
-                s, post_id, new_raw,
+                s, post_id, old_raw,
                 bypass_bump=True,
                 topic_id=topic_id
             )

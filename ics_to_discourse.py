@@ -214,13 +214,13 @@ def update_first_post_raw(
         # Must be top-level, not post[bypass_bump]
         fields.append(("bypass_bump", "true"))
     resp = put_form(s, f"/posts/{post_id}.json", fields)
-    if bypass_bump and topic_id:
-        log.info("Invoking reset-bump-date fallback for topic %s", topic_id)
-        try:
-            _reset_bump_date(s, topic_id)
-        except Exception:
-            # Non-fatal; proceed even if reset fails
-            pass
+#    if bypass_bump and topic_id:
+#        log.info("Invoking reset-bump-date fallback for topic %s", topic_id)
+#        try:
+#            _reset_bump_date(s, topic_id)
+#        except Exception:
+#            # Non-fatal; proceed even if reset fails
+#            pass
     return resp
 
 def update_topic_tags(s: requests.Session, topic_id: int, merged_tags: Iterable[str]) -> Dict[str, Any]:

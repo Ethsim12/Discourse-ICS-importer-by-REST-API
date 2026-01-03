@@ -61,11 +61,6 @@ Typical log patterns:
   `INFO: [ics-sync] Adopting existing topic by time match (time-only mode): 5272`  
   `INFO: [ics-sync] Adopting existing topic by site-wide match: 5272 (start=... end=... loc=...)`
 
-- **Bump suppression**  
-  `INFO: Invoking reset-bump-date fallback for topic 5272`  
-  `WARNING: reset-bump-date failed for topic 5272: 403 Client Error: Forbidden for url: ...`  
-  > If you see a 403 here, your API key is not a **global staff key**. This endpoint requires an admin/mod key tied to a staff user.
-
 - **Topic creation**  
   `INFO: [ics-sync] Created new topic 5310 (title=... )`
 
@@ -76,7 +71,7 @@ These log lines make it clear *why* a topic was adopted or created, and whether 
 - An OS with Python 3 and systemd support (tested on **Ubuntu 24.04 LTS**, ships with Python 3.12).  
 - A Discourse API key with permission to create topics (and, if needed on first run, to use/create tags) in the target category.  
 
-> ⚠️ **Important:** As per [Meta post](https://meta.discourse.org/t/syncing-ical-ics-feeds-into-discourse/379361/34), the API key must be a **global key** tied to a **staff user** (e.g. `system` or an admin account). Limited-scope keys will fail on some operations (such as reset-bump-date).
+
 
 - Your Discourse base URL
 

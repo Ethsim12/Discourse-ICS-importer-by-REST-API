@@ -82,6 +82,13 @@ These log lines make it clear *why* a topic was adopted or created, and whether 
 
 - Your ICS feed URL (you may need to append `.ics` to the URL)
 
+> ⚠️ Important — topics:read_lists is required
+>
+> The sync uses /latest.json as a fallback during de-duplication.
+> This endpoint requires the topics → read lists scope, which is separate from topics → read in the Discourse API key UI.
+>
+> If topics → read lists is missing, the sync will fail with:
+> 403 invalid_access on /latest.json
 
 ## Configuration
 

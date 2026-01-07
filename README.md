@@ -227,6 +227,21 @@ StandardOutput=journal
 StandardError=journal
 ```
 
+<details>
+<summary><strong>systemd unit directives explained</strong></summary>
+`Wants=network-online.target`
+Creates a weak dependency. When this service starts, systemd will attempt to start `network-online.target`, but this service will still run even if the network fails to come online.
+
+`After=network-online.target`
+Controls startup ordering only. Ensures this service starts only after `network-online.target` is reached. It does not cause the network to be started by itself.
+
+`Type=oneshot`
+Declares the service as a short-lived task rather than a daemon. The service runs its `ExecStart` command(s) and then exits. Success is determined by the exit code. Multiple `ExecStart` lines are allowed and run sequentially.
+
+`RemainAfterExit=yes`
+Commonly used with `Type=oneshot`. Tells systemd to consider the service active even after the process exits. Useful when the service performs one-time setup that other units depend on.
+</details>
+
 Create the timer unit (example: every 6 hours):
 
 ```

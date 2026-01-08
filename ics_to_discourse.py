@@ -11,7 +11,7 @@ Key behaviours:
 - Does NOT change category on update.
 - Merges tags on update (never drops moderator/manual tags).
 - Updates the first post only when the visible content changes (hidden marker ignored).
-- Adds an invisible marker to the first post so the topic can be re-identified on future syncs.
+- On Creation of an Opening Post, rather than Edit; Adds an invisible marker to the first post so the topic can be re-identified on future syncs.
 
 Env (recommended):
   DISCOURSE_BASE_URL       e.g. "https://forum.example.com"

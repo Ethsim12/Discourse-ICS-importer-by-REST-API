@@ -11,7 +11,7 @@ Key behaviours:
 - Does NOT change category on update.
 - Merges tags on update (never drops moderator/manual tags).
 - Updates the first post only when the visible content changes (hidden marker ignored).
-- On Creation of an Opening Post, rather than Edit; Adds an invisible marker to the first post so the topic can be re-identified on future syncs.
+- Embeds an invisible UID marker in the first post on create and on content updates; adopted topics may be retrofitted with the marker, depending on whether the retrofit path (currently commented out) is enabled.
 
 Env (recommended):
   DISCOURSE_BASE_URL       e.g. "https://forum.example.com"

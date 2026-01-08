@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Sync ICS -> Discourse topics (create/update by UID).
+Sync ICS -> Discourse topics (create/update by UID, with site-wide deduplication fallback).
 
-Key behaviors:
-- Idempotent by ICS UID (one topic per UID).
+Key behaviours:
+- Attempts idempotent updates by ICS UID (via UID-derived tag and/or hidden marker).
+- If no UID match is found (e.g. noisy or unstable feeds), falls back to site-wide deduplication.
+- By default, fallback deduplication matches (start, end, location).
+- With --time-only-dedupe, fallback deduplication matches (start, end) only, tolerating location changes.
 - Preserves human-edited titles on update.
 - Does NOT change category on update.
 - Merges tags on update (never drops moderator/manual tags).
-- Updates the first post only when the content changes (marker ignored).
-- Adds an invisible marker to the first post so the topic can be found next time.
+- Updates the first post only when the visible content changes (hidden marker ignored).
+- Adds an invisible marker to the first post so the topic can be re-identified on future syncs.
 
 Env (recommended):
   DISCOURSE_BASE_URL       e.g. "https://forum.example.com"

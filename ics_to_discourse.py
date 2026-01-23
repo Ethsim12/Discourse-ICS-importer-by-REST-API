@@ -140,7 +140,7 @@ def _reset_bump_date(s: requests.Session, topic_id: int) -> None:
     """
     try:
         # Empty form body; endpoint is PUT /t/{id}/reset-bump-date
-        put_form(s, f"/t/{topic_id}/reset-bump-date", [])
+       # put_form(s, f"/t/{topic_id}/reset-bump-date", [])
     except Exception as e:
         # Non-fatal: log and carry on
         log.warning("reset-bump-date failed for topic %s: %s", topic_id, e)

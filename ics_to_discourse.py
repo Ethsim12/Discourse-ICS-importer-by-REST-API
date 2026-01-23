@@ -134,16 +134,7 @@ def put_form(s: requests.Session, path: str, data: Iterable[Tuple[str, Any]]) ->
         return {"_raw": r.text}
 
 def _reset_bump_date(s: requests.Session, topic_id: int) -> None:
-    """
-    Undo Latest bump caused by metadata/tag changes.
-    Requires staff credentials (your API user/key already are).
-    """
-    try:
-        # Empty form body; endpoint is PUT /t/{id}/reset-bump-date
-        # put_form(s, f"/t/{topic_id}/reset-bump-date", [])
-    except Exception as e:
-        # Non-fatal: log and carry on
-        log.warning("reset-bump-date failed for topic %s: %s", topic_id, e)
+    return
 
 def post_json(s: requests.Session, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
     r = _request_with_backoff(s, "POST", f"{BASE}{path}", json=json)

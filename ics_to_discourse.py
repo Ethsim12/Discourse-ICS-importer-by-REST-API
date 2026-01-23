@@ -252,7 +252,7 @@ def update_topic_tags(s: requests.Session, topic_id: int, merged_tags: Iterable[
     fields: List[Tuple[str, Any]] = [("tags[]", t) for t in tags]
     resp = put_form(s, f"/t/{topic_id}.json", fields)
     # Tag updates bump the topic; immediately undo that bump.
-    _reset_bump_date(s, topic_id)
+    #_reset_bump_date(s, topic_id)
     return resp
 
 # --------------------------------------------------------------------------------------

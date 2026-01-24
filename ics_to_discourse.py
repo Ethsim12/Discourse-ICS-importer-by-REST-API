@@ -625,8 +625,8 @@ def create_or_adopt_topic(
                 log.info(f"[ics-sync] Adopting existing topic via description search: {tid2}")
                 return tid2, False
 
-    # 2) Fallback: scan /latest.json pages regardless of API error
-    if pages_to_scan > 0:
+    # 2) Fallback: scan /latest.json ONLY if /search.json errored
+    if api_error and pages_to_scan > 0:
         time_only_candidates: Set[Tuple[str, str]] = {(t[0], t[1]) for t in candidate_triples}
         for page in range(max(1, pages_to_scan)):
             data = get_json(s, "/latest.json", page=page, no_definitions="true")

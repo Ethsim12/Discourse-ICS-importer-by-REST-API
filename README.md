@@ -93,7 +93,7 @@ Set your environment in an `.env` file (example):
 DISCOURSE_BASE_URL=https://discuss.example.com
 
 DISCOURSE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-DISCOURSE_API_USERNAME=system
+DISCOURSE_API_USERNAME=EventsBot
 ```
 
 ICS & Discourse target:

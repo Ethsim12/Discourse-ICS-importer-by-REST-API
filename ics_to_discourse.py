@@ -828,7 +828,11 @@ def main() -> None:
 
     count = 0
     created = 0
-    for ev in cal.walk("VEVENT"):
+
+    events = list(cal.walk("VEVENT"))
+    events.reverse()  # <- flips processing order
+
+    for ev in events:
         try:
             _, was_created = sync_event(s, ev, args)
             count += 1
@@ -836,7 +840,7 @@ def main() -> None:
                 created += 1
         except Exception as e:
             log.error("Error syncing event: %s", e, exc_info=True)
-
+        
     log.info("Done. Processed %d events (%d created, %d updated).", count, created, count - created)
 
 if __name__ == "__main__":

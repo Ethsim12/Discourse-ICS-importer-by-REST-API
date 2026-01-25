@@ -211,7 +211,7 @@ def update_first_post_raw(
         if "[event" in (new_raw or "") and not re.search(r'\breminders?\s*=', new_raw, flags=re.I):
             new_raw = re.sub(
                 r'(\[event\b[^\]]*)\]',
-                r'\1 reminders="bumpTopic.5.minutes"]',
+                r'\1 reminders="bumpTopic.15.minutes"]',
                 new_raw,
                 count=1,
                 flags=re.I,

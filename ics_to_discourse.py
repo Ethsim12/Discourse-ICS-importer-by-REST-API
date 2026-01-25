@@ -798,7 +798,7 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
             #new_raw = f"<!-- {marker_token} -->\n{old_raw or ''}"
             # IMPORTANT: keep this quiet
             update_first_post_raw(
-                s, post_id, old_raw,
+                s, post_id, new_raw,
                 bypass_bump=True,
                 topic_id=topic_id
             )

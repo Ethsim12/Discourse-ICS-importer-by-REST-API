@@ -740,12 +740,17 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
 
         # Merge tags, ensuring UID tag is present
         existing_tags = topic.get("tags", []) or []
-        desired_tags = set(existing_tags)
+        normalized_existing = [
+            t["name"] if isinstance(t, dict) else t
+            for t in existing_tags
+        ]
+        
+        desired_tags = set(normalized_existing)
         desired_tags.update(_norm_tags(DEFAULT_TAGS))
         desired_tags.update(_norm_tags(args.static_tags))
         #desired_tags.add(uid_tag)
 
-        if set(existing_tags) != desired_tags:
+        if set(normalized_existing) != desired_tags:
             merged = sorted(desired_tags)
             log.info("Merging tags on topic %s -> %s", topic_id, ", ".join(merged))
             update_topic_tags(s, topic_id, merged)

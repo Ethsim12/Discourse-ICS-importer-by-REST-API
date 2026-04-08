@@ -237,14 +237,31 @@ def update_first_post_raw(
 #            pass
     return resp
 
-def update_topic_tags(s: requests.Session, topic_id: int, merged_tags: Iterable[str]) -> Dict[str, Any]:
-    tags = list(merged_tags)
-    # Build the full form payload once, then PUT once.
-    fields: List[Tuple[str, Any]] = [("tags[]", t) for t in tags]
-    resp = put_form(s, f"/t/{topic_id}.json", fields)
-    # Tag updates bump the topic; immediately undo that bump.
-    #_reset_bump_date(s, topic_id)
-    return resp
+def normalize_tag_names(tags) -> List[str]:
+    out: List[str] = []
+    seen: Set[str] = set()
+    for t in tags or []:
+        if isinstance(t, dict):
+            name = str(t.get("name", "")).strip()
+        else:
+            name = str(t).strip()
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+def update_topic_tags(s, topic_id, merged_tags):
+    tag_names = normalize_tag_names(merged_tags)
+    payload = {
+        "tags": [{"id": t, "name": t} for t in tag_names]
+    }
+    r = _request_with_backoff(s, "PUT", f"{BASE}/t/{topic_id}.json", json=payload)
+    if not r.content or not r.content.strip():
+        return {}
+    try:
+        return r.json()
+    except Exception:
+        return {"_raw": r.text}
 
 # --------------------------------------------------------------------------------------
 # Event block parsing & normalization
@@ -664,15 +681,24 @@ def create_or_adopt_topic(
    
 
     # Else: create a new topic
+
+    # i don’t use fields anymore. I use payload instead.
     fields: List[Tuple[str, Any]] = [
         ("title", title),
         ("raw", raw),
         ("category", int(category_id)),
         ("archetype", "regular"),
     ]
-    for t in tags:
-        fields.append(("tags[]", t))
-    data = post_form(s, "/posts.json", fields)
+    # i don’t use fields anymore. I use payload instead.
+  
+    payload = {
+      "title": title,
+      "raw": raw,
+      "category": int(category_id),
+      "archetype": "regular",
+      "tags": [{"id": t, "name": t} for t in normalize_tag_names(tags)],
+    }
+    data = post_json(s, "/posts.json", payload)
 
     tid = data.get("topic_id")
   
@@ -789,11 +815,11 @@ def sync_event(s: requests.Session, ev, args) -> Tuple[int | None, bool]:
 
     # Adopted an existing topic → retrofit UID tag + hidden marker (don't change visible body)
     topic = read_topic_full(s, topic_id)
-    existing_tags = topic.get("tags", []) or []
+    existing_tags = normalize_tag_names(topic.get("tags", []) or [])
     desired = set(existing_tags)
     desired.update(_norm_tags(DEFAULT_TAGS))
     desired.update(_norm_tags(args.static_tags))
-    ###desired.add(uid_tag)
+
     if set(existing_tags) != desired:
         update_topic_tags(s, topic_id, sorted(desired))
 

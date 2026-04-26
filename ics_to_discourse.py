@@ -90,7 +90,7 @@ def _request_with_backoff(s: requests.Session, method: str, url: str, **kwargs) 
                     err = r.json()
                 except Exception:
                     err = {"body": r.text[:800]}
-                ctx = kwargs.get("_request_context")
+                ctx = kwargs.pop("_request_context")
                 if ctx:
                     log.error("HTTP %s %s failed (%s): %s | ctx=%s",
                               method, url, r.status_code, err, ctx)
